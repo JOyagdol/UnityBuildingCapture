@@ -1,0 +1,14 @@
+{
+  "name": "UnityResearchCapture.Editor",
+  "rootNamespace": "UnityResearchCapture.Editor",
+  "references": [
+    "UnityResearchCapture.Runtime",
+    "CesiumRuntime",
+    "Unity.RenderPipelines.Universal.Runtime",
+    "Unity.RenderPipelines.Core.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": true
+}

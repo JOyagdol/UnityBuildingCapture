@@ -1,0 +1,23 @@
+# Source-only allowlist. Models, scenes, local settings and capture results stay local.
+# Review this list before adding new directories. Never force-add private data.
+*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/README.md.meta
+!/package.json
+!/package.json.meta
+!/Runtime/
+!/Runtime.meta
+!/Runtime/*.cs
+!/Runtime/*.cs.meta
+!/Runtime/*.asmdef
+!/Runtime/*.asmdef.meta
+!/Editor/
+!/Editor.meta
+!/Editor/*.cs
+!/Editor/*.cs.meta
+!/Editor/*.asmdef
+!/Editor/*.asmdef.meta
+!/Tools~/
+!/Tools~/audit_release.py

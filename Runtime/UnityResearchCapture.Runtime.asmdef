@@ -1,0 +1,12 @@
+{
+  "name": "UnityResearchCapture.Runtime",
+  "rootNamespace": "UnityResearchCapture",
+  "references": [
+    "CesiumRuntime",
+    "Unity.Mathematics",
+    "Unity.RenderPipelines.Universal.Runtime",
+    "Unity.RenderPipelines.Core.Runtime",
+    "UnityEngine.UI"
+  ],
+  "autoReferenced": true
+}

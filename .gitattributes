@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.cs text diff=csharp
+*.meta text
+*.asmdef text
+*.json text
+*.md text
+*.py text
