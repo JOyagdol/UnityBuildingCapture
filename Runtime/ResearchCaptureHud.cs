@@ -8,7 +8,7 @@ namespace UnityResearchCapture
         public ResearchWalker walker;
         public ResearchCaptureWriter capture;
         public ResearchNavigation navigation;
-        static Rect Panel => new Rect(12,12,430,430);
+        static Rect Panel => new Rect(12,12,430,460);
         GUIStyle wrapped;
         Font font;
         void Awake() { font=Font.CreateDynamicFontFromOSFont(new[]{"Malgun Gothic","Arial"},14); }
@@ -21,9 +21,10 @@ namespace UnityResearchCapture
             if(font!=null) GUI.skin.font=font;
             if(wrapped==null) wrapped=new GUIStyle(GUI.skin.label) { wordWrap=true, fontSize=13 };
             GUILayout.BeginArea(Panel,GUI.skin.box);
-            GUILayout.Label("RESEARCH CAPTURE");
+            GUILayout.Label("RESEARCH CAPTURE 0.2.1");
             GUILayout.Label("이동: "+(walker.Mode==MovementMode.Manual?"수동":"자동")+"   자동 촬영: "+(walker.AutoCapture?"켜짐":"꺼짐"));
             GUILayout.Label("저장 완료 (이미지 + 메타데이터): "+capture.SavedCount);
+            GUILayout.Label("이동 영역: "+string.Join(", ",System.Array.ConvertAll(navigation.areas,a=>a==null?"-":a.areaId)),wrapped);
             bool locked=Cursor.lockState==CursorLockMode.Locked;
             GUI.enabled=!locked;
             if(GUILayout.Button(walker.Mode==MovementMode.Manual?"자동 이동 시작  [F1]":"수동 이동으로 전환  [F1]",GUILayout.Height(30))) walker.ToggleMovement();

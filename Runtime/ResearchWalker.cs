@@ -161,7 +161,7 @@ namespace UnityResearchCapture
 
         bool MoveThroughObstacles(Vector3 motion)
         {
-            // Small substeps stop at unloaded floors, holes, area boundaries and floor changes.
+            // Small substeps follow real floor or a bounded wall/door bridge between real floor anchors.
             // No gravity/free-flight and no collider changes to the building are involved.
             motion=Vector3.ProjectOnPlane(motion,Vector3.up);
             float step=0.05f*U;
@@ -172,13 +172,22 @@ namespace UnityResearchCapture
             for(int i=0;i<count;i++)
             {
                 Vector3 next=transform.position+increment;
-                if(!navigation.TryGround(next,out var ground,false) ||
-                    Mathf.Abs(ground.point.y-transform.position.y)>settings.stepHeight*U+0.04f*U)
+                if(!navigation.IsInSelectedArea(next,false))
                 {
-                    Status="Pass-through blocked: no supported floor in the selected area/level";
+                    Status="이동 영역 경계입니다. CaptureArea 범위 밖으로는 이동하지 않습니다.";
                     break;
                 }
-                transform.position=new Vector3(next.x,ground.point.y,next.z);
+                if(!navigation.TryTraversalGround(next,out var ground,false))
+                {
+                    Status="바닥 연결이 없습니다. 같은 층의 양쪽 바닥이 확인된 짧은 벽·문 구간만 통과합니다.";
+                    break;
+                }
+                if(Mathf.Abs(ground.y-transform.position.y)>settings.stepHeight*U+0.04f*U)
+                {
+                    Status="허용된 단차보다 높습니다. 다른 층으로 이동하지 않습니다.";
+                    break;
+                }
+                transform.position=new Vector3(next.x,ground.y,next.z);
             }
             return (transform.position-before).sqrMagnitude>0.000001f;
         }
@@ -204,7 +213,7 @@ namespace UnityResearchCapture
             navigation.SetPassThroughObstacles(enabled);
             // Transform, view and automatic-capture flag are intentionally preserved.
             capture.LogEvent("obstacle_pass_through",enabled?"on":"off");
-            Status=enabled?"Wall/door pass-through ON; floor and collection-area limits remain active":
+            Status=enabled?"벽·문 통과 켜짐: 같은 층 바닥과 설정된 이동 영역을 유지합니다.":
                 "Wall/door pass-through OFF; collision walking restored";
             return true;
         }

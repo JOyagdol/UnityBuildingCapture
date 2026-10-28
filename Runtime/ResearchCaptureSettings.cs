@@ -22,6 +22,8 @@ namespace UnityResearchCapture
         public bool lockCursorOnStart = false;
         [Tooltip("Pass through walls, doors and furniture while following verified floor support. Toggle at runtime with F3.")]
         public bool initialPassThroughObstacles = false;
+        [Tooltip("Maximum floor seam width under a wall/door, in metres. Both sides need real floor in the same selected area/level. Zero disables bridging. Captures require actual floor.")]
+        [Range(0, 2)] public float passThroughMaximumGap = 1.2f;
 
         [Header("Route / automatic capture")]
         [Min(0.1f)] public float pointSpacing = 1;

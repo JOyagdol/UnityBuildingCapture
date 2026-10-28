@@ -1,6 +1,6 @@
 {
   "name": "com.researchtools.capture",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "displayName": "Unity Research Capture",
   "description": "Human-height navigation and camera-only image collection. Source code only; no scene, model, georeference or dataset is included.",
   "unity": "2022.1",

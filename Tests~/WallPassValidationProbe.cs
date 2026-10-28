@@ -132,6 +132,43 @@ namespace UnityResearchCapture
                 "collection boundary and floor level remain enforced");
             Check(Mathf.Abs(walker.viewCamera.transform.position.y-transform.position.y-1.6f)<0.01f,
                 "manual traversal preserves eye height");
+            // Real exports often end floor finishes at each wall face.
+            // Model that topology rather than hiding it under a continuous test floor.
+            GameObject.Find("Synthetic near floor").SetActive(false);
+            GameObject.Find("Synthetic far floor").SetActive(false);
+            GameObject.Find("Synthetic lower floor").SetActive(false);
+            MakeFloor("Seam near floor",new Vector3(0,-0.25f,-1.075f),new Vector3(8,0.5f,1.85f));
+            MakeFloor("Seam far floor",new Vector3(0,-0.25f,1.075f),new Vector3(8,0.5f,1.85f));
+            transform.position=new Vector3(0,0,-1);
+            walker.Look(new Vector2(-Mathf.DeltaAngle(0,walker.viewCamera.transform.eulerAngles.y)/walker.settings.mouseSensitivity,0));
+            Physics.SyncTransforms();
+            Check(!nav.TryGround(Vector3.zero,out var rawSeam),"wall seam has no fabricated capture floor");
+            Check(nav.TryTraversalGround(Vector3.zero,out var seam) && Mathf.Abs(seam.y)<0.01f,
+                "wall seam uses two same-floor anchors for traversal support");
+            for(int i=0;i<75;i++) {walker.StepManual(Vector2.up,0.02f,false); yield return null;}
+            Check(transform.position.z>0.8f && Mathf.Abs(transform.position.y)<0.02f,
+                "manual pass-through crosses a missing floor finish beneath a wall");
+            transform.position=Vector3.zero;
+            Check(!walker.CanCaptureHere && !writer.RequestCapture(false),"interpolated wall seam cannot become an image endpoint");
+            transform.position=new Vector3(0,0,-1);
+            yield return nav.Build(transform.position);
+            Check(nav.IsReady && nav.Points.Count==1,"automatic route connects real floor on both sides of wall seam");
+            if(nav.IsReady)
+            {
+                walker.ToggleMovement();
+                float seamEnd=Time.realtimeSinceStartup+8;
+                while(walker.Mode==MovementMode.Automatic && Time.realtimeSinceStartup<seamEnd) yield return null;
+                Check(transform.position.z>1 && walker.Mode==MovementMode.Manual,"automatic traversal crosses wall seam and completes");
+                walker.UseManual("Synthetic seam tests complete");
+            }
+            var seamBarrier=GameObject.Find("Synthetic closed barrier");
+            seamBarrier.SetActive(false);
+            Physics.SyncTransforms();
+            Check(!nav.TryTraversalGround(Vector3.zero,out seam),"an open floor hole without a wall is not bridged");
+            seamBarrier.SetActive(true);
+            GameObject.Find("Seam far floor").SetActive(false);
+            Physics.SyncTransforms();
+            Check(!nav.TryTraversalGround(Vector3.zero,out seam),"wall traversal requires a real floor on the far side");
             Finish(report.failed.Count==0?0:2);
         }
         static void MakeFloor(string name,Vector3 position,Vector3 size)

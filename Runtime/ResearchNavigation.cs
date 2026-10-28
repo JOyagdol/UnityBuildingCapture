@@ -66,6 +66,76 @@ namespace UnityResearchCapture
             return false;
         }
 
+        public bool IsInSelectedArea(Vector3 feet, bool requireApproved = true)
+        {
+            foreach (var area in areas)
+                if (area != null && (!requireApproved || area.approvedForCollection) && area.Contains(feet)) return true;
+            return false;
+        }
+
+        // Traversal support can bridge a short seam underneath a wall/door. Image
+        // endpoints still use TryGround and ClearBody: no images are taken on a bridge.
+        public bool TryTraversalGround(Vector3 feet, out Vector3 support, bool requireApproved = true)
+        {
+            if (TryGround(feet, out var hit, requireApproved)) { support = hit.point; return true; }
+            support = default;
+            float limit = Mathf.Clamp(settings.passThroughMaximumGap, 0, 2) * U;
+            if (!PassThroughObstacles || limit < 0.05f * U || !IsInSelectedArea(feet, requireApproved)) return false;
+            // Skip open air before doing the more expensive anchor search.
+            bool nearbyObstacle = false;
+            foreach (var collider in Physics.OverlapSphere(feet + Vector3.up * Height * 0.5f, limit,
+                settings.collisionMask, QueryTriggerInteraction.Ignore))
+                if (!(collider is CharacterController)) { nearbyObstacle = true; break; }
+            if (!nearbyObstacle) return false;
+            foreach (var axis in BridgeAxes)
+            {
+                if (!FindFloorAnchor(feet, axis, limit, requireApproved, out var forward, out float forwardDistance) ||
+                    !FindFloorAnchor(feet, -axis, limit - forwardDistance, requireApproved, out var backward, out float backwardDistance)) continue;
+                float length = forwardDistance + backwardDistance;
+                if (length > limit + 0.001f * U || Mathf.Abs(forward.y - backward.y) > settings.stepHeight * U) continue;
+                // Both supports must belong to one explicitly selected floor/area.
+                CaptureArea selected = null;
+                foreach (var area in areas)
+                    if (area != null && (!requireApproved || area.approvedForCollection) &&
+                        area.Contains(feet) && area.Contains(forward) && area.Contains(backward)) { selected = area; break; }
+                if (selected == null || !HasBarrierBetween(backward, forward, selected)) continue;
+                float y = Mathf.Lerp(backward.y, forward.y, backwardDistance / length);
+                support = new Vector3(feet.x, y, feet.z);
+                return true;
+            }
+            return false;
+        }
+        static readonly Vector3[] BridgeAxes = {
+            Vector3.right, Vector3.forward, new Vector3(1,0,1).normalized, new Vector3(1,0,-1).normalized
+        };
+        bool FindFloorAnchor(Vector3 feet, Vector3 axis, float limit, bool approved, out Vector3 point, out float distance)
+        {
+            point = default; distance = 0;
+            float increment = 0.05f * U;
+            for (float d = increment; d <= limit + 0.001f * U; d += increment)
+            {
+                Vector3 candidate = feet + axis * d;
+                if (!IsInSelectedArea(candidate, approved)) return false;
+                if (TryGround(candidate, out var hit, approved)) { point = hit.point; distance = d; return true; }
+            }
+            return false;
+        }
+        bool HasBarrierBetween(Vector3 from, Vector3 to, CaptureArea area)
+        {
+            Vector3 start = from + Vector3.up * Height * 0.5f;
+            Vector3 delta = to - from;
+            foreach (var hit in Physics.RaycastAll(start, delta.normalized, delta.magnitude,
+                settings.collisionMask, QueryTriggerInteraction.Ignore))
+            {
+                if (hit.collider is CharacterController || Mathf.Abs(hit.normal.y) > 0.7f) continue;
+                if (!area.requireCityGmlFloor) return true;
+                string kind = CityGmlSurface.Property(hit, "gml_class");
+                if (kind == "bldg_WallSurface" || kind == "bldg_InteriorWallSurface" || kind == "bldg_Door" ||
+                    kind == "bldg_Window" || kind == "bldg_BuildingInstallation" || kind == "bldg_IntBuildingInstallation") return true;
+            }
+            return false;
+        }
+
         public bool ClearBody(Vector3 feet, float extra = 0)
         {
             float r = Radius + extra;
@@ -129,7 +199,11 @@ namespace UnityResearchCapture
                     {
                         var p = new Vector3(bounds.min.x + x * cell, area.floorHeight, bounds.min.z + z * cell);
                         samples++;
-                        if (TryGround(p, out var h) && (PassThroughObstacles || ClearBody(h.point, cell * 0.71f)))
+                        if (PassThroughObstacles)
+                        {
+                            if (TryTraversalGround(p, out var support)) { grid[x, z] = support; valid[x, z] = true; }
+                        }
+                        else if (TryGround(p, out var h) && ClearBody(h.point, cell * 0.71f))
                         { grid[x, z] = h.point; valid[x, z] = true; }
                     }
                     if (z % 8 == 0) { Status = "Sampling floor: " + samples; yield return null; }
