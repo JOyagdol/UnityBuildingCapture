@@ -21,3 +21,6 @@
 !/Editor/*.asmdef.meta
 !/Tools~/
 !/Tools~/audit_release.py
+
+!/Tests~/
+!/Tests~/*.cs

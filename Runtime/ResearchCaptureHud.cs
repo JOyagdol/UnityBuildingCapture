@@ -8,7 +8,7 @@ namespace UnityResearchCapture
         public ResearchWalker walker;
         public ResearchCaptureWriter capture;
         public ResearchNavigation navigation;
-        static Rect Panel => new Rect(12,12,430,365);
+        static Rect Panel => new Rect(12,12,430,430);
         GUIStyle wrapped;
         Font font;
         void Awake() { font=Font.CreateDynamicFontFromOSFont(new[]{"Malgun Gothic","Arial"},14); }
@@ -29,6 +29,9 @@ namespace UnityResearchCapture
             if(GUILayout.Button(walker.Mode==MovementMode.Manual?"자동 이동 시작  [F1]":"수동 이동으로 전환  [F1]",GUILayout.Height(30))) walker.ToggleMovement();
             if(GUILayout.Button(walker.AutoCapture?"자동 촬영 끄기  [F2]":"자동 촬영 켜기  [F2]",GUILayout.Height(30))) walker.ToggleAutoCapture();
             if(GUILayout.Button("현재 시점 한 장 촬영  [P]",GUILayout.Height(30))) walker.TakePhoto();
+            GUI.enabled=!locked&&!navigation.IsBuilding&&!capture.Busy;
+            if(GUILayout.Button(walker.PassThroughObstacles?"벽·문 통과 끄기  [F3]":"벽·문 통과 켜기  [F3]",GUILayout.Height(30))) walker.TogglePassThroughObstacles();
+            GUILayout.Label("벽·문 통과: "+(walker.PassThroughObstacles?"켜짐 (바닥 유지 / 장애물 내부 촬영 제한)":"꺼짐"),wrapped);
             GUI.enabled=!locked&&!navigation.IsBuilding;
             if(GUILayout.Button("보행 경로 준비 / 다시 생성",GUILayout.Height(25))) walker.RebuildRoute();
             GUI.enabled=true;

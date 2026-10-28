@@ -12,6 +12,7 @@ namespace UnityResearchCapture
         public CaptureArea[] areas = Array.Empty<CaptureArea>();
         public Transform[] waypoints = Array.Empty<Transform>();
         public bool useInspectorWaypoints;
+        public bool PassThroughObstacles { get; private set; }
         public bool IsReady { get; private set; }
         public bool IsBuilding { get; private set; }
         public string Status { get; private set; } = "Prepare walking area first";
@@ -27,6 +28,16 @@ namespace UnityResearchCapture
         public float Height => (settings.eyeHeight + 0.16f) * U;
         public NavMeshQueryFilter Filter => new NavMeshQueryFilter { agentTypeID = AgentTypeId, areaMask = NavMesh.AllAreas };
 
+        public void SetPassThroughObstacles(bool enabled)
+        {
+            if (PassThroughObstacles == enabled) return;
+            PassThroughObstacles = enabled;
+            IsReady = false;
+            Points.Clear();
+            RemoveMesh();
+            Status = "Traversal changed; rebuild route at current position";
+        }
+
         public bool TryGround(Vector3 expectedFeet, out RaycastHit hit, bool requireApproved = true)
         {
             hit = default;
@@ -41,8 +52,13 @@ namespace UnityResearchCapture
                 foreach (var h in hits)
                 {
                     if (h.collider is CharacterController) continue;
-                    // The uppermost non-walkable surface blocks access to lower floors.
-                    if (Vector3.Angle(h.normal, Vector3.up) > settings.maxSlope || !CityGmlSurface.IsFloor(h, area)) break;
+                    // Pass-through may look past an obstacle, but still requires the selected
+                    // floor semantics, area and narrow height band. It never invents support.
+                    if (Vector3.Angle(h.normal, Vector3.up) > settings.maxSlope || !CityGmlSurface.IsFloor(h, area))
+                    {
+                        if (PassThroughObstacles) continue;
+                        break;
+                    }
                     hit = h;
                     return true;
                 }
@@ -63,6 +79,7 @@ namespace UnityResearchCapture
 
         public bool ClearSegment(Vector3 from, Vector3 to)
         {
+            if (PassThroughObstacles) return true; // Support is checked separately at floor samples.
             Vector3 delta = to - from;
             float length = delta.magnitude;
             if (length < 0.001f) return true;
@@ -80,7 +97,7 @@ namespace UnityResearchCapture
             IsBuilding = true;
             IsReady = false;
             Points.Clear();
-            if (!TryGround(start, out var initial) || !ClearBody(initial.point))
+            if (!TryGround(start, out var initial) || (!PassThroughObstacles && !ClearBody(initial.point)))
             {
                 Status = "Current position is not on an approved, clear floor. Manual mode retained.";
                 Log?.Invoke("navigation_rejected", Status);
@@ -112,7 +129,7 @@ namespace UnityResearchCapture
                     {
                         var p = new Vector3(bounds.min.x + x * cell, area.floorHeight, bounds.min.z + z * cell);
                         samples++;
-                        if (TryGround(p, out var h) && ClearBody(h.point, cell * 0.71f))
+                        if (TryGround(p, out var h) && (PassThroughObstacles || ClearBody(h.point, cell * 0.71f)))
                         { grid[x, z] = h.point; valid[x, z] = true; }
                     }
                     if (z % 8 == 0) { Status = "Sampling floor: " + samples; yield return null; }
@@ -138,8 +155,8 @@ namespace UnityResearchCapture
             mesh.SetVertices(vertices); mesh.SetTriangles(triangles, 0); mesh.RecalculateBounds();
             var build = NavMesh.CreateSettings();
             AgentTypeId = build.agentTypeID; createdAgentSettings = true;
-            // The raster cells are already eroded by the full body radius plus
-            // half a cell diagonal. Avoid eroding narrow doors a second time.
+            // Normal mode already erodes cells by the body radius. Pass-through
+            // keeps supported cells under obstacles, but capture endpoints remain clear.
             build.agentRadius = 0.01f * U;
             build.agentHeight = Height;
             build.agentClimb = settings.stepHeight * U;
@@ -192,6 +209,7 @@ namespace UnityResearchCapture
 
         void AddCandidate(Vector3 point, Vector3 origin, string name)
         {
+            // Never create capture endpoints inside walls/furniture, including pass-through mode.
             if (!TryGround(point, out var h) || !ClearBody(h.point))
             { if(name!="grid") Log?.Invoke("waypoint_skipped",name+": no approved clear floor"); return; }
             if (!NavMesh.SamplePosition(h.point, out var sampled, 0.12f * U, Filter) ||

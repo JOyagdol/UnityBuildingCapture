@@ -20,6 +20,8 @@ namespace UnityResearchCapture
         public MovementMode initialMovement = MovementMode.Manual;
         public bool initialAutoCapture = false;
         public bool lockCursorOnStart = false;
+        [Tooltip("Pass through walls, doors and furniture while following verified floor support. Toggle at runtime with F3.")]
+        public bool initialPassThroughObstacles = false;
 
         [Header("Route / automatic capture")]
         [Min(0.1f)] public float pointSpacing = 1;

@@ -10,7 +10,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 ALLOWED = re.compile(
     r'^(?:\.gitignore|\.gitattributes|README\.md(?:\.meta)?|package\.json(?:\.meta)?|'
     r'(?:Runtime|Editor)\.meta|(?:Runtime|Editor)/[A-Za-z0-9_.]+\.(?:cs|asmdef)(?:\.meta)?|'
-    r'Tools~/audit_release\.py)$'
+    r'Tools~/audit_release\.py|Tests~/[A-Za-z0-9_]+\.cs)$'
 )
 BLOCKED_CONTENT = [
     ('site identifier', re.compile(r'Smart[ _]?City[ _]?Lab', re.IGNORECASE)),

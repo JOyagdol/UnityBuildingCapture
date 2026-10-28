@@ -16,6 +16,9 @@ namespace UnityResearchCapture
         public Camera[] otherCameras;
         public MovementMode Mode { get; private set; } = MovementMode.Manual;
         public bool AutoCapture { get; private set; }
+        public bool PassThroughObstacles { get; private set; }
+        public bool CanCaptureHere => Ready && navigation.TryGround(transform.position, out var floor, false) &&
+            navigation.ClearBody(floor.point);
         public bool Ready { get; private set; }
         public string Status { get; private set; } = "Loading floor and colliders";
         public int RouteIndex { get; private set; }
@@ -44,6 +47,9 @@ namespace UnityResearchCapture
             viewCamera.transform.localPosition=Vector3.up*settings.eyeHeight*U;
             viewCamera.fieldOfView=settings.verticalFieldOfView;
             AutoCapture=settings.initialAutoCapture;
+            PassThroughObstacles=settings.initialPassThroughObstacles;
+            navigation.SetPassThroughObstacles(PassThroughObstacles);
+            body.enabled=!PassThroughObstacles;
             if(settings.useAmbientFill)
             {
                 RenderSettings.ambientMode=UnityEngine.Rendering.AmbientMode.Flat;
@@ -68,7 +74,7 @@ namespace UnityResearchCapture
             {
                 if(navigation.TryGround(transform.position,out var floor,false) && navigation.ClearBody(floor.point))
                 {
-                    body.enabled=false; transform.position=floor.point; body.enabled=true;
+                    body.enabled=false; transform.position=floor.point; body.enabled=!PassThroughObstacles;
                     Ready=true; Status="Manual movement ready";
                     capture.LogEvent("walking_ready","Feet="+transform.position+"; eye height metres="+settings.eyeHeight);
                 }
@@ -87,6 +93,7 @@ namespace UnityResearchCapture
         {
             if(Input.GetKeyDown(KeyCode.F1)) ToggleMovement();
             if(Input.GetKeyDown(KeyCode.F2)) ToggleAutoCapture();
+            if(Input.GetKeyDown(KeyCode.F3)) TogglePassThroughObstacles();
             if(Input.GetKeyDown(KeyCode.P)) TakePhoto();
             if(Input.GetKeyDown(KeyCode.Escape)) SetCursorLocked(false);
             if(Input.GetMouseButtonDown(0) && !ResearchCaptureHud.IsOverPanel(Input.mousePosition)) SetCursorLocked(true);
@@ -124,13 +131,14 @@ namespace UnityResearchCapture
             if(AutoCapture && travelled>0.0001f*U)
             {
                 distanceWalked+=travelled;
-                if(distanceWalked>=settings.manualCaptureDistance*U && !capture.Busy && capture.RequestCapture(true))
+                if(distanceWalked>=settings.manualCaptureDistance*U && CanCaptureHere && !capture.Busy && capture.RequestCapture(true))
                     distanceWalked=0; // Only a new movement can schedule the next distance capture.
             }
         }
 
         bool MoveSafely(Vector3 motion)
         {
+            if(PassThroughObstacles) return MoveThroughObstacles(motion);
             // Preflight the intended support: do not walk over unapproved gaps or unloaded floors.
             Vector3 next=transform.position+motion;
             if(!navigation.TryGround(next,out var nextGround,false)) { Status="Movement blocked: no approved floor support"; return false; }
@@ -149,6 +157,56 @@ namespace UnityResearchCapture
                 return false;
             }
             return (transform.position-previous).sqrMagnitude>0.000001f;
+        }
+
+        bool MoveThroughObstacles(Vector3 motion)
+        {
+            // Small substeps stop at unloaded floors, holes, area boundaries and floor changes.
+            // No gravity/free-flight and no collider changes to the building are involved.
+            motion=Vector3.ProjectOnPlane(motion,Vector3.up);
+            float step=0.05f*U;
+            motion=Vector3.ClampMagnitude(motion,256*step);
+            int count=Mathf.Max(1,Mathf.CeilToInt(motion.magnitude/step));
+            Vector3 increment=motion/count;
+            Vector3 before=transform.position;
+            for(int i=0;i<count;i++)
+            {
+                Vector3 next=transform.position+increment;
+                if(!navigation.TryGround(next,out var ground,false) ||
+                    Mathf.Abs(ground.point.y-transform.position.y)>settings.stepHeight*U+0.04f*U)
+                {
+                    Status="Pass-through blocked: no supported floor in the selected area/level";
+                    break;
+                }
+                transform.position=new Vector3(next.x,ground.point.y,next.z);
+            }
+            return (transform.position-before).sqrMagnitude>0.000001f;
+        }
+
+        public void TogglePassThroughObstacles() { SetPassThroughObstacles(!PassThroughObstacles); }
+        public bool SetPassThroughObstacles(bool enabled)
+        {
+            if(enabled==PassThroughObstacles) return true;
+            if(preparing || navigation.IsBuilding || capture.Busy)
+            {
+                Status="Wait for navigation preparation/capture before changing pass-through";
+                return false;
+            }
+            if(!enabled && !navigation.ClearBody(transform.position,0.02f*U))
+            {
+                Status="Cannot restore collisions inside an obstacle. Move to an open floor first.";
+                capture.LogEvent("obstacle_pass_through_rejected",Status);
+                return false;
+            }
+            UseManual("Pass-through changed; press F1 to prepare a new automatic route");
+            PassThroughObstacles=enabled;
+            body.enabled=!enabled;
+            navigation.SetPassThroughObstacles(enabled);
+            // Transform, view and automatic-capture flag are intentionally preserved.
+            capture.LogEvent("obstacle_pass_through",enabled?"on":"off");
+            Status=enabled?"Wall/door pass-through ON; floor and collection-area limits remain active":
+                "Wall/door pass-through OFF; collision walking restored";
+            return true;
         }
 
         public void ToggleMovement()

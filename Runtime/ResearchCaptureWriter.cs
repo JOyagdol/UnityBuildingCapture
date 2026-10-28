@@ -10,7 +10,7 @@ namespace UnityResearchCapture
 {
     [Serializable] public sealed class CaptureRecord
     {
-        public int schemaVersion = 1;
+        public int schemaVersion = 2;
         public string imageId, fileName, capturedAtUtc, movementMode, captureMode, roomId;
         public int unityFrame, width, height;
         public double unityRealtimeSeconds;
@@ -24,6 +24,7 @@ namespace UnityResearchCapture
         public string originalCityGmlCoordinates = "not included: original CityGML CRS/transform has not been verified";
         public string georeferenceDefinition;
         public bool researchAmbientFill;
+        public bool obstaclePassThrough;
         public Color ambientFillColor;
         public double[] ecefMetres;
     }
@@ -87,6 +88,8 @@ namespace UnityResearchCapture
             if (Busy) { Status = "Capture already pending"; return false; }
             if (sourceCamera == null || !sourceCamera.isActiveAndEnabled || walker == null || !walker.Ready)
             { Fail("Camera or walkable floor is not ready"); return false; }
+            if (!walker.CanCaptureHere)
+            { Fail("Capture blocked: move out of the wall/furniture onto a clear floor"); return false; }
             if (string.IsNullOrEmpty(SessionFolder)) { Fail("Output folder is not available"); return false; }
             Busy = true; LastCaptureSucceeded = false;
             pendingMode = automatic ? "automatic" : "manual";
@@ -152,6 +155,9 @@ namespace UnityResearchCapture
         {
             if(camera==sourceCamera) SourceRenderedFrames++;
             if (!Busy || rendering || camera != sourceCamera || !TilesReady()) return;
+            // A request may have preceded movement into an obstacle in this frame.
+            if (!walker.CanCaptureHere)
+            { Fail("Capture cancelled: camera entered an obstacle before rendering"); return; }
             rendering = true;
             var canvases = FindObjectsOfType<Canvas>();
             var enabledCanvases = new bool[canvases.Length];
@@ -208,6 +214,7 @@ namespace UnityResearchCapture
                 captureMode=pendingMode, roomId=RoomRegion.Resolve(p), projectionMatrix=new float[16]
             };
             result.researchAmbientFill=settings.useAmbientFill;
+            result.obstaclePassThrough=walker.PassThroughObstacles;
             result.ambientFillColor=settings.ambientFillColor;
             for (int i=0;i<16;i++) result.projectionMatrix[i]=captureCamera.projectionMatrix[i];
             if (georeference != null)
