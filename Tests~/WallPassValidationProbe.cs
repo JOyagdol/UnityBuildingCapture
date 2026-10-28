@@ -25,7 +25,7 @@ namespace UnityResearchCapture
             Directory.CreateDirectory("ResearchValidation");
             File.WriteAllText("ResearchValidation/wall-pass-validation.json",JsonUtility.ToJson(report,true));
             Debug.Log("WALL_PASS_COMPLETE passed="+report.passed.Count+" failed="+report.failed.Count);
-            EditorApplication.Exit(code);
+            ValidationSceneSession.Complete(code);
         }
         IEnumerator Start()
         {

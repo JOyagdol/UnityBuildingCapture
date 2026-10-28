@@ -165,7 +165,7 @@ Room ID는 기본 `unknown`입니다. `Tools > Research Capture > Add Room Groun
 | `Runtime/CaptureGizmoScope.cs` | 촬영 중 Editor Gizmo 제외 |
 | `Editor/ResearchCaptureSetup.cs` | 데이터에 의존하지 않는 Scene 연결 메뉴 |
 | `Tools~/audit_release.py` | 커밋 대상 파일과 제외 규칙 검사 |
-| `Tests~/WallPassValidation*.cs` | 실제 데이터 없이 벽 통과·바닥·촬영을 확인하는 합성 검증 |
+| `Tests~/WallPassValidation*.cs`, `Tests~/ValidationSceneSession.cs` | 합성 검증 및 검증 전 Scene 상태 복원 |
 
 ## 검증 범위와 제한
 
@@ -190,11 +190,16 @@ Windows 실행 파일은 Data 폴더와 DLL 등 전체 빌드 결과를 함께 �
 테스트 파일은 `Tests~`에 있어 패키지 설치만으로 자동 실행되지 않습니다.
 별도 시험용 Unity 프로젝트에 패키지를 설치한 뒤:
 
-1. `Tests~/WallPassValidationProbe.cs`를 `Assets/ResearchCaptureValidation/`에 복사합니다.
+1. `Tests~/WallPassValidationProbe.cs`와 `Tests~/ValidationSceneSession.cs`를 `Assets/ResearchCaptureValidation/`에 복사합니다.
 2. `Tests~/WallPassValidation.cs`를 `Assets/ResearchCaptureValidation/Editor/`에 복사합니다.
-3. `Tools > Research Capture > Validate Wall Pass (Synthetic)`을 실행합니다.
-   현재 작업은 저장한 뒤 실행하세요. 검사가 새 합성 Scene을 열고 완료 후 Editor를 종료합니다.
-4. `ResearchValidation/wall-pass-validation.json`에서 결과를 확인합니다.
+3. 열려 있는 모든 Scene을 파일로 저장한 뒤 `Tools > Research Capture > Validate Wall Pass (Synthetic)`을 실행합니다.
+   이름 없는 Scene이나 저장하지 않은 변경이 남아 있으면 검사를 시작하지 않습니다.
+4. 검사가 완료되거나 Play Mode를 직접 중지하면 검증 전의 Scene 목록과 활성 Scene을 복원합니다. 메뉴에서 실행한 검사는 Editor를 종료하지 않습니다.
+5. `ResearchValidation/wall-pass-validation.json`에서 결과를 확인합니다.
+
+명령줄 자동 검증에서는 `-batchmode`, 또는 그래픽 실행 시 `-researchValidationExit`를 사용하면 Scene 복원 후 종료합니다.
+Scene 복원 실패 시에는 Editor를 유지하고 Console에 오류를 기록합니다.
+복원 처리는 별도 임시 프로젝트의 실제 Play Mode에서 확인했습니다. 미저장 Scene 실행 거부, 저장된 두 Scene 및 활성 Scene 복원, 원본 Scene 파일 보존을 모두 통과했습니다.
 
 그래픽 모드에서는 PNG와 촬영 메타데이터도 검사합니다. `-batchmode -nographics`에서는 이동·경로·촬영 거부 조건만 검사합니다.
 검증용 Scene, 결과 이미지, 로그는 저장소에 포함하지 않습니다.

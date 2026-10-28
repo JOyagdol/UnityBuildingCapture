@@ -10,7 +10,7 @@ namespace UnityResearchCapture.Editor
         [MenuItem("Tools/Research Capture/Validate Wall Pass (Synthetic)")]
         public static void Run()
         {
-            if(!Application.isBatchMode && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            if(!ValidationSceneSession.Begin()) return;
             if(!Application.isBatchMode)
             {
                 var type=typeof(EditorWindow).Assembly.GetType("UnityEditor.GameView");
