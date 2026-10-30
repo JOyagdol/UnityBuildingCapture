@@ -10,7 +10,8 @@ namespace UnityResearchCapture
 {
     [Serializable] public sealed class CaptureRecord
     {
-        public int schemaVersion = 2;
+        public int schemaVersion = 3;
+        public string buildingId = "unknown", floorId = "unknown";
         public string imageId, fileName, capturedAtUtc, movementMode, captureMode, roomId;
         public int unityFrame, width, height;
         public double unityRealtimeSeconds;
@@ -36,6 +37,7 @@ namespace UnityResearchCapture
     {
         public ResearchCaptureSettings settings;
         public Camera sourceCamera;
+        public ResearchBuildingExplorer exploration;
         public ResearchWalker walker;
         public CesiumGeoreference georeference;
         public Cesium3DTileset[] tilesets = Array.Empty<Cesium3DTileset>();
@@ -56,6 +58,7 @@ namespace UnityResearchCapture
 
         void Awake()
         {
+            if(exploration == null) exploration = GetComponent<ResearchBuildingExplorer>();
             try
             {
                 string folder=settings.outputFolder;
@@ -202,6 +205,8 @@ namespace UnityResearchCapture
             string id = Guid.NewGuid().ToString("N");
             float fov = captureCamera.fieldOfView;
             var result = new CaptureRecord {
+                buildingId=exploration == null ? "unknown" : exploration.buildingId,
+                floorId=exploration == null ? "unknown" : exploration.CurrentFloorId,
                 imageId=id, fileName="images/" + id + ".png", capturedAtUtc=DateTime.UtcNow.ToString("O"),
                 unityFrame=Time.frameCount, unityRealtimeSeconds=Time.realtimeSinceStartupAsDouble,
                 cameraPositionUnity=p, cameraRotationUnity=captureCamera.transform.rotation,

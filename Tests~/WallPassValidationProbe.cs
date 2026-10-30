@@ -62,7 +62,7 @@ namespace UnityResearchCapture
                 if(!Application.isBatchMode)
                 {
                     Check(writer.SavedCount==2 && writer.LastRecord!=null && writer.LastRecord.obstaclePassThrough &&
-                        writer.LastRecord.schemaVersion==2 && writer.LastRecord.movementMode=="automatic",
+                        writer.LastRecord.schemaVersion==3 && writer.LastRecord.movementMode=="automatic",
                         "automatic pass-through route saves directional PNG and traversal metadata");
                     if(walker.AutoCapture) walker.ToggleAutoCapture();
                 }
@@ -169,6 +169,34 @@ namespace UnityResearchCapture
             GameObject.Find("Seam far floor").SetActive(false);
             Physics.SyncTransforms();
             Check(!nav.TryTraversalGround(Vector3.zero,out seam),"wall traversal requires a real floor on the far side");
+            // A real low step must not become a gap when floor samples are triangulated.
+            GameObject.Find("Seam near floor").SetActive(false);
+            seamBarrier.SetActive(false);
+            MakeFloor("Step lower floor",new Vector3(0,-0.25f,-1),new Vector3(8,0.5f,2));
+            MakeFloor("Step upper floor",new Vector3(0,-0.10f,1),new Vector3(8,0.5f,2));
+            transform.position=new Vector3(0,0,-1);
+            nav.waypoints=new[]{nav.waypoints[0]};
+            nav.waypoints[0].position=new Vector3(0,0.15f,1.2f);
+            Physics.SyncTransforms();
+            yield return nav.Build(transform.position);
+            Check(nav.IsReady && nav.Points.Count==1,"permitted low step keeps the automatic floor graph connected");
+            if(nav.IsReady)
+            {
+                walker.ToggleMovement();
+                float stepEnd=Time.realtimeSinceStartup+8;
+                while(walker.Mode==MovementMode.Automatic && Time.realtimeSinceStartup<stepEnd) yield return null;
+                Check(walker.Mode==MovementMode.Manual && transform.position.z>1 && Mathf.Abs(transform.position.y-0.15f)<0.02f,
+                    "automatic pass-through traverses a real low step at its actual floor height");
+            }
+            GameObject.Find("Step upper floor").transform.position=new Vector3(0,0.25f,1);
+            nav.areas[0].floorTolerance=0.75f;
+            nav.waypoints[0].position=new Vector3(0,0.5f,1.2f);
+            transform.position=new Vector3(0,0,-1);
+            Physics.SyncTransforms();
+            yield return nav.Build(transform.position);
+            Check(!nav.IsReady,"excessive step remains disconnected despite the bake seam allowance");
+            walker.StepManual(Vector2.up,2,false);
+            Check(transform.position.z<=0.01f && Mathf.Abs(transform.position.y)<0.02f,"manual movement cannot climb an excessive step");
             Finish(report.failed.Count==0?0:2);
         }
         static void MakeFloor(string name,Vector3 position,Vector3 size)

@@ -17,7 +17,11 @@ namespace UnityResearchCapture
         public MovementMode Mode { get; private set; } = MovementMode.Manual;
         public bool AutoCapture { get; private set; }
         public bool PassThroughObstacles { get; private set; }
-        public bool CanCaptureHere => Ready && navigation.TryGround(transform.position, out var floor, false) &&
+        public bool IsPreparing => preparing || navigation.IsBuilding;
+        public bool InputSuspended { get; set; }
+        public bool SuppressRouteLoop { get; set; }
+        public event System.Action AutomaticRouteCompleted;
+        public bool CanCaptureHere => Ready && !InputSuspended && navigation.TryGround(transform.position, out var floor, false) &&
             navigation.ClearBody(floor.point);
         public bool Ready { get; private set; }
         public string Status { get; private set; } = "Loading floor and colliders";
@@ -25,7 +29,7 @@ namespace UnityResearchCapture
         public bool IsCollecting => Mode == MovementMode.Automatic;
         CharacterController body;
         NavMeshPath path;
-        int corner, direction;
+        int corner, direction, automaticRequestGeneration;
         float yaw, pitch, distanceWalked, reachedAt, startYaw, pointStarted, lastProgressAt;
         Vector3 lastProgressPosition;
         bool visiting, requestedDirection, preparing;
@@ -91,6 +95,8 @@ namespace UnityResearchCapture
 
         void Update()
         {
+            if(Input.GetKeyDown(KeyCode.Escape)) SetCursorLocked(false);
+            if(InputSuspended) return;
             if(Input.GetKeyDown(KeyCode.F1)) ToggleMovement();
             if(Input.GetKeyDown(KeyCode.F2)) ToggleAutoCapture();
             if(Input.GetKeyDown(KeyCode.F3)) TogglePassThroughObstacles();
@@ -122,7 +128,7 @@ namespace UnityResearchCapture
 
         public void StepManual(Vector2 input,float dt,bool fast)
         {
-            if(!Ready || Mode!=MovementMode.Manual || preparing) return;
+            if(!Ready || InputSuspended || Mode!=MovementMode.Manual || preparing) return;
             input=Vector2.ClampMagnitude(input,1);
             Vector3 direction=Quaternion.Euler(0,yaw,0)*new Vector3(input.x,0,input.y);
             Vector3 before=transform.position;
@@ -195,6 +201,7 @@ namespace UnityResearchCapture
         public void TogglePassThroughObstacles() { SetPassThroughObstacles(!PassThroughObstacles); }
         public bool SetPassThroughObstacles(bool enabled)
         {
+            if(InputSuspended) return false;
             if(enabled==PassThroughObstacles) return true;
             if(preparing || navigation.IsBuilding || capture.Busy)
             {
@@ -220,17 +227,20 @@ namespace UnityResearchCapture
 
         public void ToggleMovement()
         {
+            if(InputSuspended) return;
             if(Mode==MovementMode.Automatic) { UseManual("Manual movement"); return; }
-            if(preparing) { Status="Navigation preparation is already running"; return; }
+            if(preparing) { UseManual("Automatic preparation cancelled"); return; }
             StartCoroutine(StartAutomatic());
         }
 
         IEnumerator StartAutomatic()
         {
             if(!Ready) { Status="Cannot start automatic movement: floor is not ready"; yield break; }
+            int generation=++automaticRequestGeneration;
             preparing=true;
             if(!navigation.IsReady) yield return navigation.Build(transform.position);
             preparing=false;
+            if(generation!=automaticRequestGeneration) yield break;
             if(!navigation.IsReady || !NavMesh.SamplePosition(transform.position,out var atFeet,0.15f*U,navigation.Filter) ||
                 Vector3.Distance(atFeet.position,transform.position)>0.15f*U)
             {
@@ -244,12 +254,14 @@ namespace UnityResearchCapture
 
         public void UseManual(string reason)
         {
+            automaticRequestGeneration++;
             Mode=MovementMode.Manual; visiting=false; requestedDirection=false; path=null; distanceWalked=0;
             // No transform, camera rotation, or CharacterController changes here.
             Status=reason; capture.LogEvent("movement_mode","manual: "+reason);
         }
         public void ToggleAutoCapture()
         {
+            if(InputSuspended) return;
             AutoCapture=!AutoCapture; distanceWalked=0;
             capture.LogEvent("automatic_capture",AutoCapture?"on":"off");
             if(visiting && !AutoCapture && !capture.Busy) AdvancePoint();
@@ -257,7 +269,7 @@ namespace UnityResearchCapture
         public void TakePhoto() { capture.RequestCapture(false); }
         public void RebuildRoute()
         {
-            if(preparing || navigation.IsBuilding) return;
+            if(InputSuspended || preparing || navigation.IsBuilding) return;
             UseManual("Preparing navigation at current position");
             StartCoroutine(navigation.Build(transform.position));
         }
@@ -277,11 +289,12 @@ namespace UnityResearchCapture
                 capture.LogEvent("waypoint_skipped","point="+RouteIndex+"; path is no longer complete"); RouteIndex++;
             }
             UseManual("Route complete");
+            AutomaticRouteCompleted?.Invoke();
         }
         void AdvancePoint()
         {
             RouteIndex++;
-            if(RouteIndex>=navigation.Points.Count && settings.loopRoute && navigation.Points.Count>1) RouteIndex=0;
+            if(RouteIndex>=navigation.Points.Count && settings.loopRoute && !SuppressRouteLoop && navigation.Points.Count>1) RouteIndex=0;
             StartNextPoint();
         }
 
@@ -329,6 +342,33 @@ namespace UnityResearchCapture
             reachedAt=Time.realtimeSinceStartup;
             Status="Point "+(RouteIndex+1)+", direction "+(direction+1)+" / "+settings.directionCount;
         }
+        // Explicit floor selection only. F1 never calls this or changes the camera position.
+        public bool TryMoveToFloor(CaptureArea[] areas, Vector3 expectedFeet, out string reason)
+        {
+            reason = "";
+            if(!Ready || InputSuspended || IsPreparing || capture.Busy || areas == null || areas.Length == 0)
+            { reason = "층 전환을 위한 바닥/경로/촬영 준비가 끝나지 않았습니다."; return false; }
+            var previousAreas = navigation.areas;
+            RaycastHit floor;
+            bool valid;
+            try
+            {
+                navigation.areas = areas;
+                valid = navigation.TryGround(expectedFeet, out floor) && navigation.ClearBody(floor.point);
+            }
+            finally { navigation.areas = previousAreas; }
+            if(!valid)
+            { reason = "선택한 층의 시작 바닥 또는 빈 공간을 확인할 수 없어 현재 위치를 유지합니다."; return false; }
+            UseManual("선택한 층의 시작점으로 전환했습니다.");
+            navigation.ClearRoute();
+            navigation.areas = areas;
+            body.enabled = false;
+            transform.position = floor.point;
+            body.enabled = !PassThroughObstacles;
+            distanceWalked = 0;
+            return true;
+        }
+
         public void SetCursorLocked(bool locked)
         { Cursor.lockState=locked?CursorLockMode.Locked:CursorLockMode.None; Cursor.visible=!locked; }
         void OnApplicationFocus(bool focus) { if(!focus) SetCursorLocked(false); }

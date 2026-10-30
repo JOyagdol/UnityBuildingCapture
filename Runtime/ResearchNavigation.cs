@@ -234,7 +234,11 @@ namespace UnityResearchCapture
             build.agentRadius = 0.01f * U;
             build.agentHeight = Height;
             build.agentClimb = settings.stepHeight * U;
-            build.agentSlope = settings.maxSlope;
+            // Real surface normals were already checked against maxSlope in TryGround.
+            // A grid quad joining two approved floor levels can be steep over one cell,
+            // even when the rise is within stepHeight. Pass-through movement checks the
+            // actual support and step again, so do not cut this artificial seam in the bake.
+            build.agentSlope = PassThroughObstacles ? 60f : settings.maxSlope;
             build.overrideVoxelSize = true; build.voxelSize = Mathf.Min(cell / 3, Radius / 3);
             build.minRegionArea = 0.05f * U * U;
             var sources = new List<NavMeshBuildSource> { new NavMeshBuildSource {
@@ -298,6 +302,15 @@ namespace UnityResearchCapture
 
         public bool Path(Vector3 start, Vector3 target, NavMeshPath path) => IsReady &&
             NavMesh.CalculatePath(start,target,Filter,path) && path.status == NavMeshPathStatus.PathComplete;
+
+        public void ClearRoute()
+        {
+            if(IsBuilding) throw new InvalidOperationException("Cannot change floors while a route is being built");
+            IsReady = false;
+            Points.Clear();
+            RemoveMesh();
+            Status = "Route cleared; prepare navigation on the selected floor";
+        }
 
         void RemoveMesh()
         {

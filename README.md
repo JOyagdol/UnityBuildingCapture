@@ -81,6 +81,21 @@ Built-in/HDRP, Unity 6 및 다른 패키지 버전의 호환성은 검증하지 
 - **자동 이동 + 자동 촬영:** 두 상태를 각각 켭니다. 지점 도착 → 정지 → 회전 → 촬영 → 다음 지점 순서로 동작합니다.
 - **원할 때 한 장:** 자동 촬영을 끄고 P 또는 촬영 버튼을 누릅니다. 두 이동 모드 모두 지원합니다.
 
+## 건물 전환과 여러 층 자동 탐색
+
+1. 건물별로 별도 로컬 Scene과 Rig를 준비하고, 각 Scene에서 `Tools > Research Capture > Add Building and Floor Controls`를 실행합니다. 반복 실행해도 컴포넌트를 중복 생성하지 않습니다.
+2. `ResearchBuildingExplorer`에 해당 건물의 `buildingId`, 표시 이름, 전환할 건물들의 Scene 경로를 지정합니다. 모든 대상 Scene을 Build Settings에 추가하세요.
+3. `floors`를 탐색 순서대로 구성합니다. 각 항목에 층 ID, 해당 층만 포함하는 CaptureArea 목록, 검증한 발 위치 `arrivalFeet`를 지정합니다. `initialFloorIndex`로 시작 층을 정합니다.
+4. 화면의 건물 버튼으로 전환합니다. 새 Scene은 그 건물의 지오리퍼런스·카메라·설정과 별도 촬영 세션으로 시작합니다. 기본 설정은 수동 이동/자동 촬영 꺼짐입니다.
+5. 층 시작점 버튼은 실제 바닥과 빈 공간이 확인될 때만 위치를 바꿉니다. 확인에 실패하면 현재 위치·층·영역을 유지합니다.
+6. **전체 층 자동 탐색**은 목록의 첫 층 시작점에서 출발해, 한 층의 경로 완료 후 다음 층 시작점으로 전환합니다. 계단을 걷는 방식은 아닙니다. 층별 경로는 각각 생성하며 `loopRoute`는 이 순회 동안만 무시합니다.
+
+자동 촬영은 독립 상태입니다. 여러 층에서 사진도 모으려면 F2를 켜고 전체 층 탐색을 시작하세요. F1은 현재 층의 자동 이동만 전환하며 위치를 바꾸지 않습니다. 전체 층 탐색 중 F1로 수동 전환하거나 중지 버튼을 누르면 다음 층으로 넘어가지 않습니다. 경로 준비 중 중지해도 나중에 자동 이동이 재개되지 않습니다.
+
+촬영이 끝나기 전에는 건물·층을 바꾸지 않습니다. 건물 로딩 중에는 이동·촬영을 잠그고, 새 건물에서 바닥이 준비되면 사용할 수 있습니다. 외부 타일을 불러오지 못한 경우에도 다른 건물로 돌아가는 버튼은 사용할 수 있습니다. HUD는 작은 창에서 스크롤할 수 있습니다.
+
+`ground_truth/`의 사진 JSON에 `buildingId`, `floorId`를 기록합니다. 건물 전환마다 새 세션을 만들며 저장 개수는 현재 세션 기준입니다. 같은 건물의 층 전환은 세션을 유지합니다. Scene·건물/층 설정·시작 좌표는 이 저장소에 추가하지 않습니다.
+
 ## 닫힌 문과 벽 통과
 
 F3 또는 화면의 **벽·문 통과 켜기** 버튼을 사용합니다. 초기값은 꺼짐이며
@@ -96,7 +111,7 @@ F3 또는 화면의 **벽·문 통과 켜기** 버튼을 사용합니다. 초기
   자동 이동을 계속하려면 F1을 눌러 현재 위치에서 경로를 다시 생성합니다.
 - 벽·가구 안에서 F3를 꺼도 갑자기 밀려나지 않습니다. 빈 바닥으로 나온 뒤 충돌 모드를 복구할 수 있습니다.
 - 벽·가구 안에서는 P 촬영과 거리 기준 자동 촬영을 제한합니다. 촬영 요청 뒤 렌더링 전 장애물에 들어가도 저장을 취소합니다.
-- 사진 JSON의 `schemaVersion`은 2이며 `obstaclePassThrough`에 촬영 시 통과 모드 여부를 기록합니다.
+- 사진 JSON의 `schemaVersion`은 3이며 `obstaclePassThrough`에 촬영 시 통과 모드 여부를 기록합니다.
 
 **다른 방도 CaptureArea 안에 있어야 합니다.** 방이 영역 밖에 있으면 박스를 조정하거나 해당 층의
 CaptureArea를 추가하고 `ResearchNavigation.areas`에 연결한 뒤 경로를 재생성하세요.
@@ -144,7 +159,7 @@ ResearchCaptures/
 강제 종료 후에는 PNG와 JSON이 모두 존재하는 쌍만 사용하세요.
 URP 카메라 렌더링 시점의 위치·회전과 촬영 시각을 기록하며, HUD·Canvas·Editor Gizmo는 촬영에서 제외합니다.
 JSON에는 이미지 ID, 파일명, UTC 시각, 프레임, 위치·회전, 단위, 시야각, 투영행렬, 해상도,
-이동 모드, 촬영 모드, Room ID, 보조광 설정이 포함됩니다.
+이동 모드, 촬영 모드, 건물 ID, 층 ID, Room ID, 보조광 설정이 포함됩니다.
 
 **추론 입력에는 `images/`만 전달하고 `ground_truth/`는 평가용으로 분리하세요.**
 좌표는 Unity world로 명시합니다. CesiumGeoreference가 있으면 검증 가능한 API 변환을 통해 ECEF(m)도 기록하지만,
@@ -163,11 +178,13 @@ Room ID는 기본 `unknown`입니다. `Tools > Research Capture > Add Room Groun
 | `Runtime/ResearchCaptureWriter.cs` | 카메라 PNG와 메타데이터 저장 |
 | `Runtime/ResearchCaptureSettings.cs` | Inspector 설정 |
 | `Runtime/ResearchCaptureHud.cs` | 조작 버튼과 상태 표시 |
+| `Runtime/ResearchBuildingExplorer.cs` | 건물 Scene 전환, 검증된 층 시작점 전환, 여러 층 순회 |
 | `Runtime/CaptureArea.cs` | 허용 층·수집 영역 |
 | `Runtime/CityGmlSurface.cs` | Cesium 의미 정보의 바닥 판독 |
 | `Runtime/RoomRegion.cs` | 사용자가 지정한 방 정답 영역 |
 | `Runtime/CaptureGizmoScope.cs` | 촬영 중 Editor Gizmo 제외 |
 | `Editor/ResearchCaptureSetup.cs` | 데이터에 의존하지 않는 Scene 연결 메뉴 |
+| `Editor/ResearchBuildingSetup.cs` | 현재 Rig에 건물·층 Inspector 설정을 연결하는 메뉴 |
 | `Tools~/audit_release.py` | 커밋 대상 파일과 제외 규칙 검사 |
 | `Tests~/WallPassValidation*.cs`, `Tests~/ValidationSceneSession.cs` | 합성 검증 및 검증 전 Scene 상태 복원 |
 
@@ -185,7 +202,9 @@ Room ID는 기본 `unknown`입니다. `Tools > Research Capture > Add Room Groun
 - Windows x64 실행 파일 빌드: v0.2.1 변경 적용 후 2026-10-28 성공.
 - Windows 독립 실행 파일의 이미지 저장: 아직 검증 완료하지 못했습니다. 숨김 실행 환경에서는 카메라 렌더 프레임이 발생하지 않았습니다.
 - 실제 키보드·마우스 조작, 전체 경로 장시간 순회, 다른 모델·층 연결: 적용하는 프로젝트에서 확인해야 합니다.
-- 계단·엘리베이터 등 층간 이동은 자동 구성하지 않습니다.
+- v0.3.0 (2026-10-30): 동일 런타임 코드의 로컬 Unity 복사본에서 건물·층 전환 및 촬영 검사 38개, 벽·바닥·단차 회귀 검사 31개 통과. 각 층의 자동/수동 촬영과 다른 건물 촬영에서 PNG/JSON 5쌍 및 schemaVersion=3의 건물/층 ID를 확인했습니다. 실제 모델·측정 좌표·검증 이미지는 포함하지 않습니다.
+- v0.3.0 공개 패키지 컴파일/메뉴 검사: 실제 모델이 없는 별도 Unity 프로젝트에서 Rig, 건물 제어 컴포넌트 중복 방지, 층 영역, HUD/저장기 연결, schemaVersion=3 확인 통과. 같은 버전의 Windows x64 빌드도 성공했습니다.
+- 계단·엘리베이터 경로는 자동 구성하지 않습니다. 여러 층 순회는 검증된 층 시작점으로 전환하는 방식입니다.
 
 빌드는 로컬 프로젝트에서 Scene을 저장하고 `File > Build Settings`에 추가한 뒤 수행하세요.
 Windows 실행 파일은 Data 폴더와 DLL 등 전체 빌드 결과를 함께 사용합니다. 외부 타일 데이터는 별도로 필요합니다.
@@ -208,6 +227,14 @@ Scene 복원 실패 시에는 Editor를 유지하고 Console에 오류를 기록
 
 그래픽 모드에서는 PNG와 촬영 메타데이터도 검사합니다. `-batchmode -nographics`에서는 이동·경로·촬영 거부 조건만 검사합니다.
 검증용 Scene, 결과 이미지, 로그는 저장소에 포함하지 않습니다.
+
+## 건물·층 검사 재현
+
+별도 시험 프로젝트에서 두 개 이상의 건물 Scene을 준비하고, 시작 Scene에 두 층을 설정합니다. 모든 대상 Scene을 Build Settings에 등록합니다. `Tests~/BuildingControlsValidationProbe.cs`, `Tests~/ValidationSceneSession.cs`를 검증 폴더에, `Tests~/BuildingControlsValidation.cs`를 그 아래 `Editor/`에 복사합니다. 저장된 두 층 Scene을 열고 `Tools > Research Capture > Validate Building and Floor Controls`를 실행합니다.
+
+검사는 바닥별 경로 연결, 두 층 순회, 준비 중 취소, 잘못된 층/Scene 거부, 촬영 중 전환 거부, 건물 왕복, 촬영 세션 분리를 확인합니다. 그래픽 장치가 있으면 각 층의 자동·수동 PNG와 건물/층 메타데이터도 확인합니다. 결과는 `ResearchValidation/building-controls-validation.json`에 저장됩니다. 모델의 경로 단절은 실패로 보고하므로 로컬 영역 설정을 확인하세요.
+
+명령줄에서는 `-executeMethod UnityResearchCapture.Editor.BuildingControlsValidation.Run -researchValidationScene "Assets/Scenes/YourSavedScene.unity"`를 사용합니다. 자동 종료는 `-batchmode` 또는 `-researchValidationExit`로 지정합니다. 검증 데이터는 공개 저장소에 포함하지 않습니다.
 
 ## Git 관리 범위
 
