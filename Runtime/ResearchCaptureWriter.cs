@@ -10,7 +10,7 @@ namespace UnityResearchCapture
 {
     [Serializable] public sealed class CaptureRecord
     {
-        public int schemaVersion = 3;
+        public int schemaVersion = 4;
         public string buildingId = "unknown", floorId = "unknown";
         public string imageId, fileName, capturedAtUtc, movementMode, captureMode, roomId;
         public int unityFrame, width, height;
@@ -21,7 +21,15 @@ namespace UnityResearchCapture
         public string lengthUnit = "metre";
         public float unityUnitsPerMetre, verticalFieldOfViewDegrees, horizontalFieldOfViewDegrees;
         public float[] projectionMatrix;
-        public string roomIdSource = "Explicit RoomRegion containing camera; unknown if absent or overlapping";
+        public string roomName, roomDescription, roomLabelStatus, roomLabelReason, roomIdSource;
+        public string roomCatalogId, roomCatalogSha256, roomSourceSha256;
+        public string roomLabelReviewStatus, roomCapturePolicy;
+        public float roomBoundaryToleranceMetres;
+        public string roomRegionId, roomRegionGeometrySha256, roomRegionCatalogTextSha256;
+        public string roomRegionReviewedBy, roomRegionReviewedAtUtc, roomRegionReviewEvidence;
+        public string referenceSnapshotSha256, candidatePoolSha256;
+        public string roomReferencePoint = "camera optical centre at the rendered frame";
+        public string[] roomCandidateIds;
         public string originalCityGmlCoordinates = "not included: original CityGML CRS/transform has not been verified";
         public string georeferenceDefinition;
         public bool researchAmbientFill;
@@ -91,6 +99,10 @@ namespace UnityResearchCapture
             if (Busy) { Status = "Capture already pending"; return false; }
             if (sourceCamera == null || !sourceCamera.isActiveAndEnabled || walker == null || !walker.Ready)
             { Fail("Camera or walkable floor is not ready"); return false; }
+            if (sourceCamera.gameObject.scene != gameObject.scene)
+            { Fail("Room GT preflight requires the capture camera and writer in the same scene"); return false; }
+            if (settings.requireReviewedRoom && !RoomRegion.TryResolveVerified(sourceCamera.transform.position,gameObject.scene,out _,out string roomError))
+            { Fail("Room GT preflight failed: "+roomError); return false; }
             if (!walker.CanCaptureHere)
             { Fail("Capture blocked: move out of the wall/furniture onto a clear floor"); return false; }
             if (string.IsNullOrEmpty(SessionFolder)) { Fail("Output folder is not available"); return false; }
@@ -199,9 +211,26 @@ namespace UnityResearchCapture
             }
         }
 
+        readonly RoomLabelLookup roomLookup = new RoomLabelLookup();
+        public RoomLabel ResolveRoomAt(Vector3 position)
+        {
+            if (settings != null && settings.requireReviewedRoom)
+            {
+                if(RoomRegion.TryResolveVerified(position,gameObject.scene,out var region,out string error))return RoomRegion.LabelFromVerified(region);
+                return new RoomLabel {status="review_required",reason=error};
+            }
+            return roomLookup.Resolve(position, gameObject.scene, georeference, settings == null ? null : settings.roomCatalog,
+                exploration == null ? "unknown" : exploration.buildingId,
+                exploration == null ? "unknown" : exploration.CurrentFloorId,
+                settings == null ? 0.02f : settings.roomBoundaryTolerance);
+        }
+
         CaptureRecord MakeRecord()
         {
             var p = captureCamera.transform.position;
+            RoomLabel room = ResolveRoomAt(p);
+            if(settings.requireReviewedRoom && (!room.Resolved || room.reviewStatus!="reviewed"))
+                throw new InvalidOperationException("Room GT validation failed before rendering: "+room.reason);
             string id = Guid.NewGuid().ToString("N");
             float fov = captureCamera.fieldOfView;
             var result = new CaptureRecord {
@@ -216,7 +245,15 @@ namespace UnityResearchCapture
                 verticalFieldOfViewDegrees=fov,
                 horizontalFieldOfViewDegrees=2 * Mathf.Atan(Mathf.Tan(fov*Mathf.Deg2Rad/2)*captureCamera.aspect)*Mathf.Rad2Deg,
                 width=target.width, height=target.height, movementMode=walker.Mode.ToString().ToLowerInvariant(),
-                captureMode=pendingMode, roomId=RoomRegion.Resolve(p), projectionMatrix=new float[16]
+                captureMode=pendingMode, roomId=room.roomId, roomName=room.roomName, roomDescription=room.roomDescription,
+                roomLabelStatus=room.status, roomLabelReason=room.reason, roomIdSource=room.source,
+                roomLabelReviewStatus=room.reviewStatus,roomCapturePolicy=settings.requireReviewedRoom?"reviewed_canonical_only":"source_geometry_with_unknown",
+                roomBoundaryToleranceMetres=settings.roomBoundaryTolerance,
+                roomRegionId=room.regionId,roomRegionGeometrySha256=room.regionGeometrySha256,roomRegionCatalogTextSha256=room.regionCatalogTextSha256,
+                roomRegionReviewedBy=room.reviewedBy,roomRegionReviewedAtUtc=room.reviewedAtUtc,roomRegionReviewEvidence=room.reviewEvidence,
+                referenceSnapshotSha256=room.referenceSnapshotSha256,candidatePoolSha256=room.candidatePoolSha256,
+                roomCatalogId=room.catalogId, roomCatalogSha256=room.catalogSha256, roomSourceSha256=room.sourceSha256,
+                roomCandidateIds=room.candidateIds, projectionMatrix=new float[16]
             };
             result.researchAmbientFill=settings.useAmbientFill;
             result.obstaclePassThrough=walker.PassThroughObstacles;
@@ -234,6 +271,9 @@ namespace UnityResearchCapture
 
         void CommitPair(byte[] png, CaptureRecord record)
         {
+            if(record.roomCapturePolicy=="reviewed_canonical_only" && (record.roomLabelReviewStatus!="reviewed" || record.roomId=="unknown" ||
+                string.IsNullOrWhiteSpace(record.roomRegionId) || string.IsNullOrWhiteSpace(record.roomRegionGeometrySha256)))
+                throw new InvalidOperationException("Refusing to persist a capture without reviewed canonical Room GT");
             string image = Path.Combine(SessionFolder,"images",record.imageId+".png");
             string label = Path.Combine(SessionFolder,"ground_truth",record.imageId+".json");
             string tempImage=image+".tmp", tempLabel=label+".tmp";

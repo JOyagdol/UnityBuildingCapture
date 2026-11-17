@@ -62,7 +62,7 @@ namespace UnityResearchCapture
                 if(!Application.isBatchMode)
                 {
                     Check(writer.SavedCount==2 && writer.LastRecord!=null && writer.LastRecord.obstaclePassThrough &&
-                        writer.LastRecord.schemaVersion==3 && writer.LastRecord.movementMode=="automatic",
+                        writer.LastRecord.schemaVersion==4 && writer.LastRecord.movementMode=="automatic",
                         "automatic pass-through route saves directional PNG and traversal metadata");
                     if(walker.AutoCapture) walker.ToggleAutoCapture();
                 }

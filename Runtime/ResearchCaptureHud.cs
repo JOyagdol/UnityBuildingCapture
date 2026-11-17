@@ -13,6 +13,8 @@ namespace UnityResearchCapture
         GUIStyle wrapped;
         Font font;
         Vector2 scroll;
+        RoomLabel displayedRoom;
+        float nextRoomPreview;
         void Awake()
         {
             font=Font.CreateDynamicFontFromOSFont(new[]{"Malgun Gothic","Arial"},14);
@@ -27,7 +29,7 @@ namespace UnityResearchCapture
             if(wrapped==null) wrapped=new GUIStyle(GUI.skin.label) { wordWrap=true, fontSize=13 };
             GUILayout.BeginArea(Panel,GUI.skin.box);
             scroll=GUILayout.BeginScrollView(scroll);
-            GUILayout.Label("Research Capture 0.3.0");
+            GUILayout.Label("Research Capture 0.4.0");
             bool locked=Cursor.lockState==CursorLockMode.Locked;
             if(exploration!=null)
             {
@@ -65,7 +67,15 @@ namespace UnityResearchCapture
                 if(!string.IsNullOrEmpty(exploration.Status)) GUILayout.Label(exploration.Status,wrapped);
             }
             GUILayout.Label("이동: "+(walker.Mode==MovementMode.Manual?"수동":"자동")+"   자동 촬영: "+(walker.AutoCapture?"켜짐":"꺼짐"));
+            GUILayout.Label("방 정답 정책: "+(capture.settings.requireReviewedRoom?"검토된 방에서만 촬영":"원본 형상 자동 기록 / 미확인 시 unknown"),wrapped);
             GUILayout.Label("저장 완료 (이미지 + 메타데이터): "+capture.SavedCount);
+            if(capture.sourceCamera!=null && Time.unscaledTime>=nextRoomPreview)
+            {
+                nextRoomPreview=Time.unscaledTime+0.25f;
+                displayedRoom=capture.ResolveRoomAt(capture.sourceCamera.transform.position);
+            }
+            if(displayedRoom!=null)
+                GUILayout.Label("현재 방: "+(displayedRoom.Resolved?displayedRoom.roomName+(displayedRoom.reviewStatus=="reviewed"?" (검토됨)":" (원본 형상 · 미검토)"):"unknown ("+displayedRoom.status+")"),wrapped);
             GUILayout.Label("이동 영역: "+string.Join(", ",System.Array.ConvertAll(navigation.areas,a=>a==null?"-":a.areaId)),wrapped);
             GUI.enabled=!locked&&!walker.InputSuspended;
             if(GUILayout.Button(walker.Mode==MovementMode.Manual?"현재 층 자동 이동 시작  [F1]":"수동 이동으로 전환  [F1]",GUILayout.Height(30))) walker.ToggleMovement();

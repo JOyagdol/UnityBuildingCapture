@@ -111,7 +111,7 @@ F3 또는 화면의 **벽·문 통과 켜기** 버튼을 사용합니다. 초기
   자동 이동을 계속하려면 F1을 눌러 현재 위치에서 경로를 다시 생성합니다.
 - 벽·가구 안에서 F3를 꺼도 갑자기 밀려나지 않습니다. 빈 바닥으로 나온 뒤 충돌 모드를 복구할 수 있습니다.
 - 벽·가구 안에서는 P 촬영과 거리 기준 자동 촬영을 제한합니다. 촬영 요청 뒤 렌더링 전 장애물에 들어가도 저장을 취소합니다.
-- 사진 JSON의 `schemaVersion`은 3이며 `obstaclePassThrough`에 촬영 시 통과 모드 여부를 기록합니다.
+- 사진 JSON의 `schemaVersion`은 4이며 `obstaclePassThrough`에 촬영 시 통과 모드 여부를 기록합니다.
 
 **다른 방도 CaptureArea 안에 있어야 합니다.** 방이 영역 밖에 있으면 박스를 조정하거나 해당 층의
 CaptureArea를 추가하고 `ResearchNavigation.areas`에 연결한 뒤 경로를 재생성하세요.
@@ -165,8 +165,37 @@ JSON에는 이미지 ID, 파일명, UTC 시각, 프레임, 위치·회전, 단�
 좌표는 Unity world로 명시합니다. CesiumGeoreference가 있으면 검증 가능한 API 변환을 통해 ECEF(m)도 기록하지만,
 원본 CityGML 좌표계와 변환을 확인한 것은 아니므로 원본 CityGML 좌표라고 주장하지 않습니다.
 
-Room ID는 기본 `unknown`입니다. `Tools > Research Capture > Add Room Ground Truth Region`으로
-실제 정답을 아는 방의 영역과 ID를 **로컬 Scene에만** 지정하세요. 서로 다른 ID가 겹치면 `unknown`입니다.
+### 방 정보와 평가용 정답
+
+v0.4.0부터 같은 촬영 프레임의 **카메라 광학 중심이 속한 방**을 JSON에 기록합니다. 사진에 보이는 모든 방의 목록이나 이미지 인식 결과가 아닙니다. 자동/수동 촬영에서 동일하게 동작합니다.
+
+| 필드 | 의미 |
+|---|---|
+| `roomId`, `roomName`, `roomDescription` | 원본의 안정적인 Room ID, 방 번호/이름, 용도/설명 |
+| `buildingId`, `floorId` | 촬영 중인 건물과 층 |
+| `roomLabelStatus`, `roomLabelReason` | 판별 성공 여부 및 unknown 사유 |
+| `roomLabelReviewStatus`, `roomCapturePolicy` | 원본 형상 자동 판별/사람 검토 상태와 촬영 허용 정책 |
+| `roomBoundaryToleranceMetres` | 촬영 시 적용한 경계 허용 오차 |
+| `roomIdSource`, `roomReferencePoint` | 영역 지정 방식과 판별 기준점 |
+| `roomCatalogId`, `roomCatalogSha256`, `roomSourceSha256` | 카탈로그 버전 및 자료 해시 |
+| `roomCandidateIds` | 겹침/경계 검사에 해당한 후보 ID; 확정 정답으로 사용하지 않음 |
+
+방 연결은 아래 두 방법을 지원합니다. 실제 방 데이터는 이 공개 저장소에 포함되지 않습니다.
+
+1. **원본 CityGML Room 형상 카탈로그:** 검증한 좌표 변환으로 만든 비공개 JSON TextAsset을 건물별 Settings의 `roomCatalog`에 연결합니다. `ResearchBuildingExplorer.buildingId`와 catalog의 `buildingId`가 같아야 합니다. 카메라의 Unity 좌표를 Cesium ECEF로 변환한 후 원본 Room의 닫힌 삼각형 형상 내부인지 검사합니다. 단순 Bounding Box를 정답으로 쓰지 않습니다.
+2. **명시적인 방 영역:** `Tools > Research Capture > Add Room Ground Truth Region`으로 로컬 Scene에 Box 영역을 만들고 `roomId`, `roomName`, `roomDescription`을 지정합니다. 선택적으로 `buildingId`, `floorId`를 지정할 수 있습니다. 정확한 ID가 담긴 `canonicalRoomCatalog`와 고유 `regionId`를 지정하고, 실제 영역을 검토한 사람이 `reviewedBy`/`reviewEvidence`를 작성한 뒤 `Tools > Research Capture > Room GT > Record Review of Selected Region`에서 검토를 기록합니다. 검토된 영역은 카탈로그보다 우선합니다. 미검토 영역 또는 겹친 영역에 있으면 unknown이며, 비활성 영역과 다른 Scene의 영역은 제외합니다. 박스로 정확히 표현할 수 없는 방은 형상 카탈로그를 사용하세요.
+
+원본 형상 자동 판별 결과는 `roomLabelReviewStatus=source_geometry_unreviewed`로 표시합니다. 이는 원본 모델에서 얻은 위치 기반 라벨이며 사람이 검토한 실험 정답으로 인증한 것이 아닙니다. 논문 평가 전에 별도 검토 상태를 확인하세요. 명시적으로 검토한 RoomRegion만 `reviewed`와 검토자·시각·근거·영역 해시·canonical snapshot/pool 해시를 기록합니다.
++
++Settings의 `requireReviewedRoom`을 켜면 이전의 엄격한 촬영 정책을 적용합니다. 이때는 같은 Scene의 모든 활성 RoomRegion이 검토되어 있고, 현재 위치에 하나의 검토된 영역만 있을 때 촬영합니다. 요청 시점과 렌더 시점에 모두 확인하며, 저장 전에도 정답 출처를 확인합니다. 일반 빌드에서도 RoomRegion 검사를 수행합니다. 기본값은 꺼짐이며, 원본 형상 자동 기록과 unknown 저장을 허용합니다. 기존 Scene에 임의의 검토 완료 표시를 자동 생성하지 않습니다.
++
++카탈로그의 표면에서 `roomBoundaryTolerance`(기본 0.02m) 이내, Room 중첩, Room 밖, 잘못된 카탈로그, 건물 불일치, 지리참조 부재에서는 `roomId=unknown`과 이유를 남깁니다. 이 경우에도 정상적인 사진/메타데이터 저장은 가능합니다. 미지정 복도나 원본에 없는 방을 가까운 방으로 임의 할당하지 않습니다. 수동 Box 영역은 사용자가 명시한 경계를 그대로 적용합니다.
+
+HUD의 현재 방 표시는 0.25초 간격의 미리보기입니다. 저장 JSON은 이 캐시를 쓰지 않고 **실제 렌더링 프레임에서 다시 판정**합니다. 촬영 정책/경계 설정 변경은 다음 촬영부터 적용하며, 기존 촬영 JSON을 일괄 수정하지 않습니다. 같은 TextAsset의 내용을 수정했다면 Play Mode를 재시작해 카탈로그 캐시를 새로 불러오세요.
+
+카탈로그 JSON 형식은 `RoomCatalogData`를 따릅니다: `schemaVersion=1`, `catalogId`, `buildingId`, `sourceSha256`, `sourceCrs`, `coordinateSystem`, `originEcef`(3개 double), `ecefToLocal`(행 우선 3×3 직교행렬), `rooms`. 각 Room에는 ID/이름/설명/층, 로컬 미터 단위 `vertices`(`{x,y,z}` 배열), `triangles`(0부터 시작하는 인덱스 배열)가 필요합니다. 변마다 두 삼각형이 공유하는 닫힌 비퇴화 메시여야 합니다. 원본의 오목한 면과 구멍을 보존해서 삼각분할하세요. 이름만으로 방의 실제 위치를 추정하지 마세요.
+
+Settings 또는 JSON을 선택하고 `Tools > Research Capture > Validate Selected Room Catalog`로 형식과 메시 폐쇄성을 검사할 수 있습니다. 이 검사는 실제 모델과의 좌표 정합이나 사람이 확인한 Room 정답을 보증하지 않습니다. 알려진 각 방의 내부점·경계·층에서 정합을 별도로 확인하세요. 카탈로그는 로컬 프로젝트에 저장되며 빌드에도 포함되므로 모델과 같은 비공개 데이터로 취급하세요.
 균일 보조광 `useAmbientFill`은 어두운 실내를 위한 옵션이며 실제 조도 측정값이 아닙니다. 적용 여부는 JSON에 기록됩니다.
 
 ## 파일 구성
@@ -182,6 +211,8 @@ Room ID는 기본 `unknown`입니다. `Tools > Research Capture > Add Room Groun
 | `Runtime/CaptureArea.cs` | 허용 층·수집 영역 |
 | `Runtime/CityGmlSurface.cs` | Cesium 의미 정보의 바닥 판독 |
 | `Runtime/RoomRegion.cs` | 사용자가 지정한 방 정답 영역 |
+| `Runtime/RoomCatalog.cs` | 원본 Room 메시 판별, 좌표 변환, unknown 사유와 출처 |
+| `Editor/RoomCatalogTools.cs` | 비공개 방 카탈로그 형식 검사 |
 | `Runtime/CaptureGizmoScope.cs` | 촬영 중 Editor Gizmo 제외 |
 | `Editor/ResearchCaptureSetup.cs` | 데이터에 의존하지 않는 Scene 연결 메뉴 |
 | `Editor/ResearchBuildingSetup.cs` | 현재 Rig에 건물·층 Inspector 설정을 연결하는 메뉴 |
@@ -256,3 +287,14 @@ git push
 검사 도구는 파일 유형·알려진 데이터 경로·토큰 패턴을 확인하는 보조 도구입니다.
 새 코드에 현장 좌표나 정답을 직접 넣으면 자동 검사가 모두 판별할 수 없으므로 변경 내용도 검토하세요.
 `git add -f`로 제외된 데이터를 강제로 추가하지 마세요. `.meta`는 포함된 코드·폴더와 함께 관리합니다.
+
+
+### v0.4.0 방 정보 검증 (2026-11-17)
+
+- 원본 프로젝트의 별도 복사본에서 Unity 2022.1.20f1 컴파일, 합성 Room 판별 16개, 실제 건물 Play Mode 검사 23개 통과했습니다.
+- 두 건물의 원본 Room 내부점 29개와 기존 촬영 위치 512개, 총 541건을 독립적인 다각형/높이 기반 예상값과 대조했습니다. 이는 모델 기반 판별 일치 확인이며 사람의 정답 검토 완료를 뜻하지 않습니다.
+- 세 층/건물 조합에서 수동 및 자동 요청으로 PNG/JSON 6쌍(320×180)을 저장하고 방 ID·이름·미검토 표시·원본/카탈로그 해시·요청 이후 회전의 반영을 확인했습니다. 기존 1920×1080 기본 설정은 유지했습니다.
+- 엄격 정책은 검토되지 않은 원본 형상만으로 촬영하는 것을 거부했습니다. 실제 방 영역의 사람 검토와 평가용 정답 승인은 별도 작업입니다.
+- 재현용 `Tests~/RoomCatalogValidation.cs`는 별도 테스트 프로젝트의 Editor 폴더에 복사해 실행하세요. 실제 모델, 카탈로그, 과거 촬영 좌표와 테스트 이미지는 공개 저장소에 포함하지 않습니다.
+
+- 범용 공개 패키지도 별도 어셈블리로 컴파일하고 합성 판별/설정 17개 검사를 통과했습니다.

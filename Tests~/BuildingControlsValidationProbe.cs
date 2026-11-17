@@ -135,7 +135,7 @@ namespace UnityResearchCapture
         void CheckPhoto(string name,int count,string building,string floor,string mode)
         {
             var r=w.capture.LastRecord;
-            bool passed=w.capture.SavedCount==count&&w.capture.LastCaptureSucceeded&&r!=null&&r.schemaVersion==3&&r.buildingId==building&&r.floorId==floor&&r.captureMode==mode;
+            bool passed=w.capture.SavedCount==count&&w.capture.LastCaptureSucceeded&&r!=null&&r.schemaVersion==4&&r.buildingId==building&&r.floorId==floor&&r.captureMode==mode;
             if(r!=null)
             {
                 string record=Path.Combine(w.capture.SessionFolder,"ground_truth",r.imageId+".json");

@@ -37,6 +37,14 @@ namespace UnityResearchCapture
         [Min(1)] public int maximumWaypoints = 3000;
         public bool loopRoute = false;
 
+        [Header("Ground-truth room labels")]
+        [Tooltip("Private JSON catalog of closed CityGML Room volumes. Stored in ground_truth only.")]
+        public TextAsset roomCatalog;
+        [Tooltip("Require an explicitly reviewed canonical RoomRegion before accepting a capture. Source geometry labels alone do not satisfy this policy.")]
+        public bool requireReviewedRoom = false;
+        [Tooltip("Camera positions this close to a Room surface remain unknown, in metres.")]
+        [Range(0.001f, 0.25f)] public float roomBoundaryTolerance = 0.02f;
+
         [Header("Images / output")]
         [Range(64, 8192)] public int imageWidth = 1920;
         [Range(64, 8192)] public int imageHeight = 1080;
